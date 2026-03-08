@@ -2,7 +2,7 @@
 name = "bsv-auth-actix-middleware"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.87"
+rust-version = "1.88"
 description = "BSV BRC-31 authentication middleware for Actix-web"
 license-file = "LICENSE"
 repository = "https://github.com/b1narydt/auth-actix-middleware"
