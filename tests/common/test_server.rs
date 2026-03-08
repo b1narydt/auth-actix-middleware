@@ -12,8 +12,8 @@ use actix_web::{HttpRequest, HttpResponse};
 use bsv::auth::certificates::master::MasterCertificate;
 use bsv::auth::peer::Peer;
 use bsv::primitives::private_key::PrivateKey;
-use bsv::wallet::interfaces::{Certificate, CertificateType, GetPublicKeyArgs};
 use bsv::wallet::interfaces::WalletInterface;
+use bsv::wallet::interfaces::{Certificate, CertificateType, GetPublicKeyArgs};
 use bsv_auth_actix_middleware::config::OnCertificatesReceived;
 use bsv_auth_actix_middleware::transport::ActixTransport;
 use bsv_auth_actix_middleware::{
@@ -53,10 +53,7 @@ pub async fn create_test_server() -> String {
                 "/other-endpoint",
                 web::post().to(handler_other_endpoint_post),
             )
-            .route(
-                "/other-endpoint",
-                web::get().to(handler_other_endpoint_get),
-            )
+            .route("/other-endpoint", web::get().to(handler_other_endpoint_get))
             .route("/error-500", web::post().to(handler_error_500))
             .route("/put-endpoint", web::put().to(handler_put))
             .route("/delete-endpoint", web::delete().to(handler_delete))
@@ -173,10 +170,9 @@ pub async fn create_cert_test_server() -> CertTestContext {
 
     // Issue a MasterCertificate to the server wallet.
     // Uses the same certifier key as the TS test suite.
-    let certifier_key = PrivateKey::from_hex(
-        "5a4d867377bd44eba1cecd0806c16f24e293f7e218c162b1177571edaeeaecef",
-    )
-    .expect("failed to parse certifier key");
+    let certifier_key =
+        PrivateKey::from_hex("5a4d867377bd44eba1cecd0806c16f24e293f7e218c162b1177571edaeeaecef")
+            .expect("failed to parse certifier key");
     let certifier_wallet = MockWallet::new(certifier_key);
 
     // Decode the base64 certificate type to [u8; 32]
@@ -221,10 +217,8 @@ pub async fn create_cert_test_server() -> CertTestContext {
 
     // Configure certificatesToRequest (HashMap<String, Vec<String>>)
     // Keys are base64-encoded certificate type, values are field names to request
-    let certs_to_request: HashMap<String, Vec<String>> = HashMap::from([(
-        cert_type_b64.to_string(),
-        vec!["firstName".to_string()],
-    )]);
+    let certs_to_request: HashMap<String, Vec<String>> =
+        HashMap::from([(cert_type_b64.to_string(), vec!["firstName".to_string()])]);
 
     // Shared storage for received certificates
     let certs_received = Arc::new(tokio::sync::Mutex::new(Vec::<Certificate>::new()));
@@ -275,7 +269,10 @@ pub async fn create_cert_test_server() -> CertTestContext {
     });
 
     let base_url = format!("http://{}", server.addr());
-    println!("[cert_server] Certificate test server started at {}", base_url);
+    println!(
+        "[cert_server] Certificate test server started at {}",
+        base_url
+    );
 
     // Leak the server to keep it alive
     std::mem::forget(server);
@@ -325,12 +322,7 @@ fn base64_decode_32(s: &str) -> [u8; 32] {
         .decode(s)
         .expect("failed to decode base64");
     let mut arr = [0u8; 32];
-    assert_eq!(
-        bytes.len(),
-        32,
-        "expected 32 bytes, got {}",
-        bytes.len()
-    );
+    assert_eq!(bytes.len(), 32, "expected 32 bytes, got {}", bytes.len());
     arr.copy_from_slice(&bytes);
     arr
 }

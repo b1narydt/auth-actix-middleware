@@ -110,9 +110,7 @@ pub fn build_auth_message(
     body_bytes: &[u8],
     headers: &AuthHeaders,
 ) -> AuthMessage {
-    let request_nonce_bytes = BASE64
-        .decode(&headers.request_id)
-        .unwrap_or_default();
+    let request_nonce_bytes = BASE64.decode(&headers.request_id).unwrap_or_default();
 
     let payload =
         crate::payload::serialize_from_http_request(&request_nonce_bytes, req, body_bytes);

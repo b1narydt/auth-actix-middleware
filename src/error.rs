@@ -102,41 +102,34 @@ mod tests {
 
     #[test]
     fn test_bsvsdk_not_authenticated_returns_401() {
-        let err = AuthMiddlewareError::BsvSdk(
-            bsv::auth::AuthError::NotAuthenticated("test".to_string()),
-        );
+        let err =
+            AuthMiddlewareError::BsvSdk(bsv::auth::AuthError::NotAuthenticated("test".to_string()));
         assert_eq!(err.status_code(), StatusCode::UNAUTHORIZED);
     }
 
     #[test]
     fn test_bsvsdk_auth_failed_returns_401() {
-        let err = AuthMiddlewareError::BsvSdk(
-            bsv::auth::AuthError::AuthFailed("test".to_string()),
-        );
+        let err = AuthMiddlewareError::BsvSdk(bsv::auth::AuthError::AuthFailed("test".to_string()));
         assert_eq!(err.status_code(), StatusCode::UNAUTHORIZED);
     }
 
     #[test]
     fn test_bsvsdk_invalid_signature_returns_401() {
-        let err = AuthMiddlewareError::BsvSdk(
-            bsv::auth::AuthError::InvalidSignature("test".to_string()),
-        );
+        let err =
+            AuthMiddlewareError::BsvSdk(bsv::auth::AuthError::InvalidSignature("test".to_string()));
         assert_eq!(err.status_code(), StatusCode::UNAUTHORIZED);
     }
 
     #[test]
     fn test_bsvsdk_timeout_returns_408() {
-        let err = AuthMiddlewareError::BsvSdk(
-            bsv::auth::AuthError::Timeout("test".to_string()),
-        );
+        let err = AuthMiddlewareError::BsvSdk(bsv::auth::AuthError::Timeout("test".to_string()));
         assert_eq!(err.status_code(), StatusCode::REQUEST_TIMEOUT);
     }
 
     #[test]
     fn test_bsvsdk_other_returns_500() {
-        let err = AuthMiddlewareError::BsvSdk(
-            bsv::auth::AuthError::TransportError("test".to_string()),
-        );
+        let err =
+            AuthMiddlewareError::BsvSdk(bsv::auth::AuthError::TransportError("test".to_string()));
         assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -172,9 +165,9 @@ mod tests {
 
     #[actix_web::test]
     async fn test_error_response_body_format_not_authenticated() {
-        let err = AuthMiddlewareError::BsvSdk(
-            bsv::auth::AuthError::NotAuthenticated("no session".to_string()),
-        );
+        let err = AuthMiddlewareError::BsvSdk(bsv::auth::AuthError::NotAuthenticated(
+            "no session".to_string(),
+        ));
         let resp = err.error_response();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
@@ -183,7 +176,10 @@ mod tests {
 
         assert_eq!(json["status"], "error");
         assert_eq!(json["code"], "ERR_NOT_AUTHENTICATED");
-        assert_eq!(json["description"], "bsv sdk error: not authenticated: no session");
+        assert_eq!(
+            json["description"],
+            "bsv sdk error: not authenticated: no session"
+        );
     }
 
     #[actix_web::test]
@@ -195,7 +191,10 @@ mod tests {
 
         assert_eq!(json["status"], "error");
         assert_eq!(json["code"], "ERR_CONFIG");
-        assert_eq!(json["description"], "configuration error: wallet is required");
+        assert_eq!(
+            json["description"],
+            "configuration error: wallet is required"
+        );
     }
 
     #[actix_web::test]
@@ -224,9 +223,8 @@ mod tests {
 
     #[actix_web::test]
     async fn test_certificate_timeout_error_response_body() {
-        let err = AuthMiddlewareError::CertificateTimeout(
-            "Certificate request timed out".to_string(),
-        );
+        let err =
+            AuthMiddlewareError::CertificateTimeout("Certificate request timed out".to_string());
         let resp = err.error_response();
         assert_eq!(resp.status(), StatusCode::REQUEST_TIMEOUT);
 

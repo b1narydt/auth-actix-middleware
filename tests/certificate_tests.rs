@@ -75,10 +75,9 @@ async fn test_cert_protected_endpoint() {
     let base_url = &ctx.server_base_url;
 
     // Create certifier wallet from fixed key (same as TS test)
-    let certifier_key = PrivateKey::from_hex(
-        "5a4d867377bd44eba1cecd0806c16f24e293f7e218c162b1177571edaeeaecef",
-    )
-    .expect("parse certifier key");
+    let certifier_key =
+        PrivateKey::from_hex("5a4d867377bd44eba1cecd0806c16f24e293f7e218c162b1177571edaeeaecef")
+            .expect("parse certifier key");
     let certifier_wallet = MockWallet::new(certifier_key);
 
     // Create client wallet with random key
@@ -140,10 +139,7 @@ async fn test_cert_protected_endpoint() {
     let url = format!("{}/cert-protected-endpoint", base_url);
     let body = serde_json::to_vec(&serde_json::json!({"message": "Hello protected Route!"}))
         .expect("serialize body");
-    let headers = HashMap::from([(
-        "content-type".to_string(),
-        "application/json".to_string(),
-    )]);
+    let headers = HashMap::from([("content-type".to_string(), "application/json".to_string())]);
 
     println!("[test_cert_protected] POST {}", url);
 
@@ -152,10 +148,7 @@ async fn test_cert_protected_endpoint() {
         .await
         .expect("auth fetch to cert-protected endpoint should succeed");
 
-    println!(
-        "[test_cert_protected] Response status: {}",
-        response.status
-    );
+    println!("[test_cert_protected] Response status: {}", response.status);
     println!(
         "[test_cert_protected] Response body: {}",
         String::from_utf8_lossy(&response.body)
@@ -210,15 +203,16 @@ async fn test_cert_request_flow() {
 
     // Configure certificates to request from the server
     let cert_type_b64 = "z40BOInXkI8m7f/wBrv4MJ09bZfzZbTj2fJqCtONqCY=";
-    let requested: HashMap<String, Vec<String>> = HashMap::from([(
-        cert_type_b64.to_string(),
-        vec!["firstName".to_string()],
-    )]);
+    let requested: HashMap<String, Vec<String>> =
+        HashMap::from([(cert_type_b64.to_string(), vec!["firstName".to_string()])]);
     auth_fetch.set_requested_certificates(requested);
 
     // Make a request to trigger handshake + cert exchange
     let url = format!("{}/", base_url);
-    println!("[test_cert_request] GET {} with requested certificates", url);
+    println!(
+        "[test_cert_request] GET {} with requested certificates",
+        url
+    );
 
     let response = auth_fetch
         .fetch(&url, "GET", None, None)
@@ -232,10 +226,7 @@ async fn test_cert_request_flow() {
     );
 
     // The request should succeed (200) since the root handler is not cert-gated
-    assert_eq!(
-        response.status, 200,
-        "expected 200 from root endpoint"
-    );
+    assert_eq!(response.status, 200, "expected 200 from root endpoint");
 
     // The handshake should have completed with certificate exchange.
     // We can verify by checking that the auth round-trip succeeded

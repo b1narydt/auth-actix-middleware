@@ -208,7 +208,10 @@ mod tests {
         // Give callback time to execute
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        assert!(called.load(Ordering::SeqCst), "callback should have been invoked");
+        assert!(
+            called.load(Ordering::SeqCst),
+            "callback should have been invoked"
+        );
 
         // Drop senders to close channels and let task exit
         drop(cert_tx);
@@ -252,12 +255,7 @@ mod tests {
         let (cert_tx, cert_rx) = mpsc::channel::<(String, Vec<Certificate>)>(8);
         let (cert_req_tx, cert_req_rx) = mpsc::channel::<(String, RequestedCertificateSet)>(8);
 
-        let task = tokio::spawn(certificate_listener_task(
-            cert_rx,
-            cert_req_rx,
-            gate,
-            None,
-        ));
+        let task = tokio::spawn(certificate_listener_task(cert_rx, cert_req_rx, gate, None));
 
         // Drop senders to close channels
         drop(cert_tx);

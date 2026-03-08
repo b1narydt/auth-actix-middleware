@@ -1,49 +1,73 @@
-//! MockWallet wrapping Arc<ProtoWallet> for Clone + WalletInterface.
+//! Basic BRC-31 authentication server example.
 //!
-//! Delegates all crypto methods to ProtoWallet's WalletInterface impl and
-//! provides in-memory certificate storage for list_certificates and prove_certificate.
+//! Demonstrates how to set up an Actix-web server with `AuthMiddlewareFactory`
+//! for mutual authentication using the BRC-31 Authrite protocol.
+//!
+//! # Overview
+//!
+//! This example creates a minimal HTTP server on `127.0.0.1:8080` that requires
+//! BRC-31 authentication on all routes. It includes:
+//!
+//! - An `ExampleWallet` implementing `WalletInterface` (for demonstration only)
+//! - Server setup with `AuthMiddlewareFactory`
+//! - A protected route using the `Authenticated` extractor
+//!
+//! # Running
+//!
+//! ```bash
+//! cargo run --example basic_auth_server
+//! ```
+//!
+//! # Note
+//!
+//! The `ExampleWallet` in this example is a minimal stub for demonstration
+//! purposes. In production, implement `WalletInterface` with proper key
+//! management, certificate storage, and transaction handling.
 
 use std::sync::Arc;
 
+use actix_web::{web, App, HttpResponse, HttpServer};
 use async_trait::async_trait;
-use tokio::sync::Mutex;
 
-use bsv::auth::certificates::master::MasterCertificate;
+use bsv::auth::peer::Peer;
 use bsv::primitives::private_key::PrivateKey;
 use bsv::wallet::error::WalletError;
 use bsv::wallet::interfaces::*;
 use bsv::wallet::proto_wallet::ProtoWallet;
 
-/// Test wallet wrapping ProtoWallet in Arc for Clone support.
+use bsv_auth_actix_middleware::transport::ActixTransport;
+use bsv_auth_actix_middleware::{
+    AuthMiddlewareConfigBuilder, AuthMiddlewareFactory, Authenticated,
+};
+
+// ---------------------------------------------------------------------------
+// ExampleWallet -- minimal WalletInterface implementation for demonstration
+// ---------------------------------------------------------------------------
+
+/// A minimal wallet wrapping `ProtoWallet` for demonstration purposes.
 ///
-/// ProtoWallet does not implement Clone (PrivateKey/KeyDeriver lack Clone).
-/// MockWallet wraps it in Arc so that AuthFetch<W: Clone> is satisfied.
-/// Certificate storage is provided via Arc<Mutex<Vec<MasterCertificate>>>.
+/// This wallet delegates cryptographic operations (signing, verification,
+/// encryption, HMAC) to `ProtoWallet` and returns stub results for
+/// certificate and action methods that are not needed for basic auth.
+///
+/// **Do not use in production.** Implement `WalletInterface` with proper
+/// key management and certificate storage for real applications.
 #[derive(Clone)]
-pub struct MockWallet {
+struct ExampleWallet {
     inner: Arc<ProtoWallet>,
-    certificates: Arc<Mutex<Vec<MasterCertificate>>>,
 }
 
-impl MockWallet {
-    pub fn new(private_key: PrivateKey) -> Self {
-        MockWallet {
+impl ExampleWallet {
+    fn new(private_key: PrivateKey) -> Self {
+        Self {
             inner: Arc::new(ProtoWallet::new(private_key)),
-            certificates: Arc::new(Mutex::new(Vec::new())),
         }
-    }
-
-    #[allow(dead_code)]
-    pub async fn add_master_certificate(&self, cert: MasterCertificate) {
-        self.certificates.lock().await.push(cert);
     }
 }
 
 #[async_trait]
-impl WalletInterface for MockWallet {
-    // -----------------------------------------------------------------------
-    // Crypto methods -- delegate to inner ProtoWallet via WalletInterface trait
-    // -----------------------------------------------------------------------
+impl WalletInterface for ExampleWallet {
+    // -- Crypto methods: delegate to ProtoWallet --
 
     async fn get_public_key(
         &self,
@@ -117,98 +141,7 @@ impl WalletInterface for MockWallet {
         WalletInterface::reveal_specific_key_linkage(&*self.inner, args, originator).await
     }
 
-    // -----------------------------------------------------------------------
-    // Overridden methods
-    // -----------------------------------------------------------------------
-
-    async fn internalize_action(
-        &self,
-        _args: InternalizeActionArgs,
-        _originator: Option<&str>,
-    ) -> Result<InternalizeActionResult, WalletError> {
-        println!("[MockWallet] internalize_action called -- accepting");
-        Ok(InternalizeActionResult { accepted: true })
-    }
-
-    async fn list_certificates(
-        &self,
-        args: ListCertificatesArgs,
-        _originator: Option<&str>,
-    ) -> Result<ListCertificatesResult, WalletError> {
-        let certs = self.certificates.lock().await;
-        let matching: Vec<CertificateResult> = certs
-            .iter()
-            .filter(|mc| {
-                let type_match =
-                    args.types.is_empty() || args.types.contains(&mc.certificate.cert_type);
-                let certifier_match = args.certifiers.is_empty()
-                    || args.certifiers.contains(&mc.certificate.certifier);
-                type_match && certifier_match
-            })
-            .map(|mc| CertificateResult {
-                certificate: mc.certificate.clone(),
-                keyring: mc.master_keyring.clone(),
-                verifier: None,
-            })
-            .collect();
-
-        println!(
-            "[MockWallet] list_certificates: {} matching out of {} total",
-            matching.len(),
-            certs.len()
-        );
-
-        Ok(ListCertificatesResult {
-            total_certificates: matching.len() as u32,
-            certificates: matching,
-        })
-    }
-
-    async fn prove_certificate(
-        &self,
-        args: ProveCertificateArgs,
-        _originator: Option<&str>,
-    ) -> Result<ProveCertificateResult, WalletError> {
-        let certs = self.certificates.lock().await;
-        let matching = certs.iter().find(|mc| {
-            mc.certificate.cert_type == args.certificate.cert_type
-                && mc.certificate.subject == args.certificate.subject
-                && mc.certificate.serial_number == args.certificate.serial_number
-                && mc.certificate.certifier == args.certificate.certifier
-        });
-
-        match matching {
-            Some(mc) => {
-                println!(
-                    "[MockWallet] prove_certificate: found matching cert, creating keyring for verifier"
-                );
-                let keyring = mc
-                    .create_keyring_for_verifier(
-                        &args.verifier,
-                        &args.fields_to_reveal,
-                        &args.certificate.certifier,
-                        self,
-                    )
-                    .await
-                    .map_err(|e| {
-                        WalletError::Internal(format!(
-                            "failed to create keyring for verifier: {}",
-                            e
-                        ))
-                    })?;
-                Ok(ProveCertificateResult {
-                    keyring_for_verifier: keyring,
-                })
-            }
-            None => Err(WalletError::Internal(
-                "no matching certificate found for prove_certificate".to_string(),
-            )),
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Stub methods -- delegate to inner (which returns NotImplemented)
-    // -----------------------------------------------------------------------
+    // -- Stub methods: return simple defaults --
 
     async fn create_action(
         &self,
@@ -256,6 +189,35 @@ impl WalletInterface for MockWallet {
         originator: Option<&str>,
     ) -> Result<RelinquishOutputResult, WalletError> {
         WalletInterface::relinquish_output(&*self.inner, args, originator).await
+    }
+
+    async fn internalize_action(
+        &self,
+        _args: InternalizeActionArgs,
+        _originator: Option<&str>,
+    ) -> Result<InternalizeActionResult, WalletError> {
+        Ok(InternalizeActionResult { accepted: true })
+    }
+
+    async fn list_certificates(
+        &self,
+        _args: ListCertificatesArgs,
+        _originator: Option<&str>,
+    ) -> Result<ListCertificatesResult, WalletError> {
+        Ok(ListCertificatesResult {
+            total_certificates: 0,
+            certificates: vec![],
+        })
+    }
+
+    async fn prove_certificate(
+        &self,
+        _args: ProveCertificateArgs,
+        _originator: Option<&str>,
+    ) -> Result<ProveCertificateResult, WalletError> {
+        Err(WalletError::Internal(
+            "prove_certificate not implemented in ExampleWallet".to_string(),
+        ))
     }
 
     async fn acquire_certificate(
@@ -323,4 +285,68 @@ impl WalletInterface for MockWallet {
     async fn get_version(&self, originator: Option<&str>) -> Result<GetVersionResult, WalletError> {
         WalletInterface::get_version(&*self.inner, originator).await
     }
+}
+
+// ---------------------------------------------------------------------------
+// Route handlers
+// ---------------------------------------------------------------------------
+
+/// A protected handler that requires BRC-31 authentication.
+///
+/// The `Authenticated` extractor provides access to the authenticated
+/// identity key of the caller.
+async fn protected_handler(auth: Authenticated) -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({
+        "message": "Hello, authenticated user!",
+        "identity_key": auth.identity_key,
+    }))
+}
+
+/// A simple health check endpoint (also protected by middleware).
+async fn health_handler(_auth: Authenticated) -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({
+        "status": "ok",
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    // Generate a random server key for this example.
+    // In production, load a persistent key from secure storage.
+    let server_key = PrivateKey::from_random().expect("failed to generate server key");
+    let wallet = ExampleWallet::new(server_key);
+
+    // Create the transport and peer for BRC-31 protocol handling.
+    let transport = Arc::new(ActixTransport::new());
+    let peer = Arc::new(tokio::sync::Mutex::new(Peer::new(
+        wallet.clone(),
+        transport.clone(),
+    )));
+
+    // Build the middleware configuration.
+    // Set allow_unauthenticated(false) to require auth on all routes.
+    let config = AuthMiddlewareConfigBuilder::new()
+        .wallet(wallet)
+        .allow_unauthenticated(false)
+        .build()
+        .expect("failed to build middleware config");
+
+    // Create the middleware factory (async because it extracts Peer receivers).
+    let middleware = AuthMiddlewareFactory::new(config, peer.clone(), transport.clone()).await;
+
+    println!("Starting BRC-31 auth server on 127.0.0.1:8080");
+
+    HttpServer::new(move || {
+        App::new()
+            .wrap(middleware.clone())
+            .route("/", web::get().to(protected_handler))
+            .route("/health", web::get().to(health_handler))
+    })
+    .bind("127.0.0.1:8080")?
+    .run()
+    .await
 }

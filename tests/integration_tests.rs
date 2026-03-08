@@ -54,10 +54,7 @@ async fn test_01_simple_post_with_json() {
 
     let body = serde_json::to_vec(&serde_json::json!({"message": "Hello from JSON!"}))
         .expect("serialize body");
-    let headers = HashMap::from([(
-        "content-type".to_string(),
-        "application/json".to_string(),
-    )]);
+    let headers = HashMap::from([("content-type".to_string(), "application/json".to_string())]);
 
     let url = format!("{}/other-endpoint", base_url);
     println!("[test_01] POST {} with JSON body", url);
@@ -74,7 +71,10 @@ async fn test_01_simple_post_with_json() {
     );
 
     assert_eq!(response.status, 200, "expected status 200");
-    assert!(!response.body.is_empty(), "expected non-empty response body");
+    assert!(
+        !response.body.is_empty(),
+        "expected non-empty response body"
+    );
 
     let body_json: serde_json::Value =
         serde_json::from_slice(&response.body).expect("parse response JSON");
@@ -98,10 +98,7 @@ async fn test_01b_error_500() {
 
     let body = serde_json::to_vec(&serde_json::json!({"message": "Hello from JSON!"}))
         .expect("serialize body");
-    let headers = HashMap::from([(
-        "content-type".to_string(),
-        "application/json".to_string(),
-    )]);
+    let headers = HashMap::from([("content-type".to_string(), "application/json".to_string())]);
 
     let url = format!("{}/error-500", base_url);
     println!("[test_01b] POST {} expecting 500", url);
@@ -152,7 +149,10 @@ async fn test_05_simple_get() {
     println!("[test_05] Response body: {}", body_str);
 
     assert_eq!(response.status, 200, "expected status 200");
-    assert!(!response.body.is_empty(), "expected non-empty response body");
+    assert!(
+        !response.body.is_empty(),
+        "expected non-empty response body"
+    );
 }
 
 /// Test 2: POST with URL-encoded body (TS Test 2).
@@ -193,7 +193,10 @@ async fn test_02_post_url_encoded() {
     );
 
     assert_eq!(response.status, 200, "expected status 200");
-    assert!(!response.body.is_empty(), "expected non-empty response body");
+    assert!(
+        !response.body.is_empty(),
+        "expected non-empty response body"
+    );
 }
 
 /// Test 3: POST with plain text body (TS Test 3).
@@ -281,9 +284,8 @@ async fn test_07_put_with_json() {
     let client_wallet = MockWallet::new(client_key);
     let mut auth_fetch = AuthFetch::new(client_wallet);
 
-    let body =
-        serde_json::to_vec(&serde_json::json!({"key": "value", "action": "update"}))
-            .expect("serialize body");
+    let body = serde_json::to_vec(&serde_json::json!({"key": "value", "action": "update"}))
+        .expect("serialize body");
     let headers = HashMap::from([
         ("content-type".to_string(), "application/json".to_string()),
         (
@@ -358,7 +360,11 @@ async fn test_09_large_binary_upload() {
     )]);
 
     let url = format!("{}/large-upload", base_url);
-    println!("[test_09] POST {} with large binary body ({} bytes)", url, body.len());
+    println!(
+        "[test_09] POST {} with large binary body ({} bytes)",
+        url,
+        body.len()
+    );
 
     let response = auth_fetch
         .fetch(&url, "POST", Some(body), Some(headers))
@@ -507,7 +513,10 @@ async fn edge_case_a_no_content_type() {
             println!("[edge_a] NOTE: TS test expects rejection; Rust AuthFetch does not enforce content-type requirement");
         }
         Err(e) => {
-            println!("[edge_a] AuthFetch returned error (matches TS behavior): {:?}", e);
+            println!(
+                "[edge_a] AuthFetch returned error (matches TS behavior): {:?}",
+                e
+            );
             // This matches TS behavior where the fetch rejects.
         }
     }
@@ -524,10 +533,7 @@ async fn edge_case_b_json_content_undefined_body() {
     let client_wallet = MockWallet::new(client_key);
     let mut auth_fetch = AuthFetch::new(client_wallet);
 
-    let headers = HashMap::from([(
-        "content-type".to_string(),
-        "application/json".to_string(),
-    )]);
+    let headers = HashMap::from([("content-type".to_string(), "application/json".to_string())]);
 
     let url = format!("{}/other-endpoint", base_url);
     println!("[edge_b] POST {} with JSON content-type but NO body", url);
@@ -557,13 +563,13 @@ async fn edge_case_c_json_content_object_body() {
     let mut auth_fetch = AuthFetch::new(client_wallet);
 
     let body = serde_json::to_vec(&serde_json::json!({})).expect("serialize empty object");
-    let headers = HashMap::from([(
-        "content-type".to_string(),
-        "application/json".to_string(),
-    )]);
+    let headers = HashMap::from([("content-type".to_string(), "application/json".to_string())]);
 
     let url = format!("{}/other-endpoint", base_url);
-    println!("[edge_c] POST {} with JSON content-type and empty object body", url);
+    println!(
+        "[edge_c] POST {} with JSON content-type and empty object body",
+        url
+    );
 
     let response = auth_fetch
         .fetch(&url, "POST", Some(body), Some(headers))
@@ -614,12 +620,18 @@ async fn test_12_server_restart() {
             .expect("auth fetch to first server should succeed");
 
         println!("[test_12] Phase 1 response status: {}", response.status);
-        assert_eq!(response.status, 200, "expected status 200 from first server");
+        assert_eq!(
+            response.status, 200,
+            "expected status 200 from first server"
+        );
     }
 
     // --- Phase 2: "Restart" -- create a second server (new port, new state) ---
     let server2_url = create_test_server().await;
-    println!("[test_12] Server 'restarted': {} -> {}", server1_url, server2_url);
+    println!(
+        "[test_12] Server 'restarted': {} -> {}",
+        server1_url, server2_url
+    );
 
     {
         // Fresh AuthFetch with same identity key
@@ -640,7 +652,10 @@ async fn test_12_server_restart() {
             .expect("auth fetch to restarted server should succeed");
 
         println!("[test_12] Phase 2 response status: {}", response.status);
-        assert_eq!(response.status, 200, "expected status 200 from restarted server");
+        assert_eq!(
+            response.status, 200,
+            "expected status 200 from restarted server"
+        );
     }
 
     println!("[test_12] Server restart recovery validated: fresh client connects to fresh server with same identity key");
@@ -674,7 +689,10 @@ async fn test_14_stale_session_recovery() {
         )]);
 
         let url = format!("{}/custom-headers", server1_url);
-        println!("[test_14] Step 1: Establishing session on server 1 at {}", url);
+        println!(
+            "[test_14] Step 1: Establishing session on server 1 at {}",
+            url
+        );
 
         let response = auth_fetch
             .fetch(&url, "GET", None, Some(headers))
@@ -687,7 +705,10 @@ async fn test_14_stale_session_recovery() {
 
     // --- Step 2: "Restart" server (sessions lost) ---
     let server2_url = create_test_server().await;
-    println!("[test_14] Step 2: Server restarted (sessions cleared): {} -> {}", server1_url, server2_url);
+    println!(
+        "[test_14] Step 2: Server restarted (sessions cleared): {} -> {}",
+        server1_url, server2_url
+    );
 
     // --- Step 3: Connect with same identity key, with timeout ---
     {
@@ -710,14 +731,19 @@ async fn test_14_stale_session_recovery() {
 
         match result {
             Ok(Ok(response)) => {
-                println!("[test_14] Step 3: Recovery succeeded! Status: {}", response.status);
+                println!(
+                    "[test_14] Step 3: Recovery succeeded! Status: {}",
+                    response.status
+                );
                 assert_eq!(response.status, 200, "expected status 200 after recovery");
             }
             Ok(Err(e)) => {
                 panic!("[test_14] Auth fetch failed after session reset: {:?}", e);
             }
             Err(_) => {
-                panic!("[test_14] TIMEOUT: Client hung for >10s trying to recover from stale session");
+                panic!(
+                    "[test_14] TIMEOUT: Client hung for >10s trying to recover from stale session"
+                );
             }
         }
     }
@@ -743,10 +769,7 @@ async fn test_15_multiple_requests_survive_session_reset() {
 
         let body = serde_json::to_vec(&serde_json::json!({"message": "before reset"}))
             .expect("serialize body");
-        let headers = HashMap::from([(
-            "content-type".to_string(),
-            "application/json".to_string(),
-        )]);
+        let headers = HashMap::from([("content-type".to_string(), "application/json".to_string())]);
 
         let url = format!("{}/other-endpoint", server1_url);
         println!("[test_15] Step 1: POST 'before reset' to {}", url);
@@ -762,7 +785,10 @@ async fn test_15_multiple_requests_survive_session_reset() {
 
     // --- Step 2: "Reset" sessions via server re-creation ---
     let server2_url = create_test_server().await;
-    println!("[test_15] Step 2: Server restarted: {} -> {}", server1_url, server2_url);
+    println!(
+        "[test_15] Step 2: Server restarted: {} -> {}",
+        server1_url, server2_url
+    );
 
     // --- Step 3: POST "after reset" with same identity key ---
     {
@@ -771,10 +797,7 @@ async fn test_15_multiple_requests_survive_session_reset() {
 
         let body = serde_json::to_vec(&serde_json::json!({"message": "after reset"}))
             .expect("serialize body");
-        let headers = HashMap::from([(
-            "content-type".to_string(),
-            "application/json".to_string(),
-        )]);
+        let headers = HashMap::from([("content-type".to_string(), "application/json".to_string())]);
 
         let url = format!("{}/other-endpoint", server2_url);
         println!("[test_15] Step 3: POST 'after reset' to {}", url);
@@ -790,10 +813,8 @@ async fn test_15_multiple_requests_survive_session_reset() {
         // --- Step 4: POST "after recovery" with same AuthFetch ---
         let body2 = serde_json::to_vec(&serde_json::json!({"message": "after recovery"}))
             .expect("serialize body");
-        let headers2 = HashMap::from([(
-            "content-type".to_string(),
-            "application/json".to_string(),
-        )]);
+        let headers2 =
+            HashMap::from([("content-type".to_string(), "application/json".to_string())]);
 
         println!("[test_15] Step 4: POST 'after recovery' to {}", url);
 
@@ -840,12 +861,13 @@ async fn test_concurrent_authenticated_requests() {
                 &serde_json::json!({"task": task_id, "message": format!("concurrent request {}", task_id)}),
             )
             .expect("serialize body");
-            let headers = HashMap::from([(
-                "content-type".to_string(),
-                "application/json".to_string(),
-            )]);
+            let headers =
+                HashMap::from([("content-type".to_string(), "application/json".to_string())]);
 
-            println!("[test_concurrent] Task {} starting POST to {}", task_id, url);
+            println!(
+                "[test_concurrent] Task {} starting POST to {}",
+                task_id, url
+            );
 
             let response = auth_fetch
                 .fetch(&url, "POST", Some(body), Some(headers))
@@ -857,11 +879,7 @@ async fn test_concurrent_authenticated_requests() {
                 task_id, response.status
             );
 
-            assert_eq!(
-                response.status, 200,
-                "task {} expected status 200",
-                task_id
-            );
+            assert_eq!(response.status, 200, "task {} expected status 200", task_id);
 
             response.status
         });
@@ -876,7 +894,11 @@ async fn test_concurrent_authenticated_requests() {
         results.push(status);
     }
 
-    println!("[test_concurrent] All {} tasks completed: {:?}", results.len(), results);
+    println!(
+        "[test_concurrent] All {} tasks completed: {:?}",
+        results.len(),
+        results
+    );
     assert_eq!(results.len(), 5, "expected 5 results");
     assert!(
         results.iter().all(|&s| s == 200),

@@ -562,10 +562,7 @@ where
 
     // 8. Append auth headers from the signed message
     final_response.insert_header(("x-bsv-auth-version", signed_msg.version.as_str()));
-    final_response.insert_header((
-        "x-bsv-auth-identity-key",
-        signed_msg.identity_key.as_str(),
-    ));
+    final_response.insert_header(("x-bsv-auth-identity-key", signed_msg.identity_key.as_str()));
 
     if let Some(ref nonce_val) = signed_msg.nonce {
         final_response.insert_header(("x-bsv-auth-nonce", nonce_val.as_str()));
@@ -582,8 +579,7 @@ where
     // Include the request ID so the client can reconstruct the signed payload.
     // The request_id was sent by the client in the request headers; the server
     // echoes it back so the client can verify the response signature.
-    final_response
-        .insert_header(("x-bsv-auth-request-id", request_headers.request_id.as_str()));
+    final_response.insert_header(("x-bsv-auth-request-id", request_headers.request_id.as_str()));
 
     Ok(ServiceResponse::new(
         request,

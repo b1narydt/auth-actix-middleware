@@ -9,9 +9,9 @@
 //! Payload byte layout must be identical to the TypeScript implementation
 //! (`auth-express-middleware`) for cross-language signature verification.
 
+use actix_web::http::header::HeaderMap;
 use actix_web::http::StatusCode;
 use actix_web::HttpRequest;
-use actix_web::http::header::HeaderMap;
 
 // ---------------------------------------------------------------------------
 // Varint encoding (matching bsv-rust-sdk auth_fetch.rs exactly)
@@ -234,12 +234,7 @@ pub fn serialize_response_payload(
 fn headers_from_request(req: &HttpRequest) -> Vec<(String, String)> {
     req.headers()
         .iter()
-        .map(|(k, v)| {
-            (
-                k.as_str().to_string(),
-                v.to_str().unwrap_or("").to_string(),
-            )
-        })
+        .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
         .collect()
 }
 
@@ -247,12 +242,7 @@ fn headers_from_request(req: &HttpRequest) -> Vec<(String, String)> {
 fn headers_from_map(headers: &HeaderMap) -> Vec<(String, String)> {
     headers
         .iter()
-        .map(|(k, v)| {
-            (
-                k.as_str().to_string(),
-                v.to_str().unwrap_or("").to_string(),
-            )
-        })
+        .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
         .collect()
 }
 

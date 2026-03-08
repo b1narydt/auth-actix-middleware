@@ -17,15 +17,9 @@ use crate::error::AuthMiddlewareError;
 ///
 /// Receives `(sender_identity_key, certificates)`. The callback is invoked
 /// fire-and-forget: panics are caught and logged but do not affect request flow.
-pub type OnCertificatesReceived = Box<
-    dyn Fn(String, Vec<Certificate>) -> BoxFuture<'static, ()> + Send + Sync
->;
+pub type OnCertificatesReceived =
+    Box<dyn Fn(String, Vec<Certificate>) -> BoxFuture<'static, ()> + Send + Sync>;
 
-/// Configuration for the BSV authentication middleware.
-///
-/// Generic over `W: WalletInterface` for zero-cost static dispatch.
-/// WalletInterface uses `#[async_trait]` and is object-safe, but generics
-/// are preferred to avoid dynamic dispatch overhead.
 impl<W: WalletInterface> std::fmt::Debug for AuthMiddlewareConfig<W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AuthMiddlewareConfig")
@@ -43,6 +37,11 @@ impl<W: WalletInterface> std::fmt::Debug for AuthMiddlewareConfig<W> {
     }
 }
 
+/// Configuration for the BSV authentication middleware.
+///
+/// Generic over `W: WalletInterface` for zero-cost static dispatch.
+/// WalletInterface uses `#[async_trait]` and is object-safe, but generics
+/// are preferred to avoid dynamic dispatch overhead.
 pub struct AuthMiddlewareConfig<W: WalletInterface> {
     /// The wallet implementation used for authentication operations.
     #[allow(dead_code)]
@@ -123,9 +122,9 @@ impl<W: WalletInterface> AuthMiddlewareConfigBuilder<W> {
     ///
     /// Returns `AuthMiddlewareError::Config` if the wallet has not been set.
     pub fn build(self) -> Result<AuthMiddlewareConfig<W>, AuthMiddlewareError> {
-        let wallet = self.wallet.ok_or_else(|| {
-            AuthMiddlewareError::Config("wallet is required".to_string())
-        })?;
+        let wallet = self
+            .wallet
+            .ok_or_else(|| AuthMiddlewareError::Config("wallet is required".to_string()))?;
 
         let config = AuthMiddlewareConfig {
             wallet,
@@ -153,9 +152,9 @@ impl<W: WalletInterface> Default for AuthMiddlewareConfigBuilder<W> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
     use bsv::wallet::error::WalletError;
     use bsv::wallet::interfaces::*;
-    use async_trait::async_trait;
     use std::collections::HashMap;
 
     /// Minimal mock wallet that satisfies `WalletInterface` trait bounds.
@@ -459,9 +458,7 @@ mod tests {
 
     #[test]
     fn test_on_certificates_received_can_be_set() {
-        let cb: OnCertificatesReceived = Box::new(|_identity_key, _certs| {
-            Box::pin(async {})
-        });
+        let cb: OnCertificatesReceived = Box::new(|_identity_key, _certs| Box::pin(async {}));
         let config = AuthMiddlewareConfigBuilder::new()
             .wallet(MockWallet)
             .on_certificates_received(cb)

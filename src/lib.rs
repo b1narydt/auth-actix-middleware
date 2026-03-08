@@ -1,8 +1,6 @@
-//! BSV BRC-31 authentication middleware for Actix-web.
-//!
-//! Translates the TypeScript `@bsv/auth-express-middleware` into an idiomatic
-//! Rust Actix-web middleware crate, implementing the BRC-31 Authrite mutual
-//! authentication protocol.
+#![doc = include_str!("../README.md")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![warn(missing_docs)]
 
 pub mod certificate;
 pub mod config;
