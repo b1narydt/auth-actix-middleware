@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/bsv-auth-actix-middleware.svg)](https://crates.io/crates/bsv-auth-actix-middleware)
 [![Documentation](https://docs.rs/bsv-auth-actix-middleware/badge.svg)](https://docs.rs/bsv-auth-actix-middleware)
 [![CI](https://github.com/b1narydt/auth-actix-middleware/actions/workflows/ci.yml/badge.svg)](https://github.com/b1narydt/auth-actix-middleware/actions)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/b1narydt/auth-actix-middleware/blob/main/LICENSE)
+[![License: Open BSV](https://img.shields.io/badge/license-Open%20BSV-blue.svg)](https://github.com/b1narydt/auth-actix-middleware/blob/main/LICENSE)
 
 BSV BRC-31 (Authrite) mutual authentication middleware for Actix-web. This crate
 translates the TypeScript `@bsv/auth-express-middleware` into idiomatic Rust,
@@ -171,4 +171,4 @@ Full API documentation is available on [docs.rs](https://docs.rs/bsv-auth-actix-
 
 ## License
 
-This project is licensed under the [MIT License](https://github.com/b1narydt/auth-actix-middleware/blob/main/LICENSE).
+This project is licensed under the [Open BSV License](https://github.com/b1narydt/auth-actix-middleware/blob/main/LICENSE).
