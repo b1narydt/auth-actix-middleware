@@ -155,7 +155,6 @@ mod tests {
     use async_trait::async_trait;
     use bsv::wallet::error::WalletError;
     use bsv::wallet::interfaces::*;
-    use std::collections::HashMap;
 
     /// Minimal mock wallet that satisfies `WalletInterface` trait bounds.
     /// All methods return `unimplemented!()` since we only test config building.
@@ -425,8 +424,8 @@ mod tests {
 
     #[test]
     fn test_certificates_to_request_can_be_set() {
-        let mut certs: RequestedCertificateSet = HashMap::new();
-        certs.insert("certifier1".to_string(), vec!["field1".to_string()]);
+        let mut certs = RequestedCertificateSet::default();
+        certs.types.insert("certifier1".to_string(), vec!["field1".to_string()]);
 
         let config = AuthMiddlewareConfigBuilder::new()
             .wallet(MockWallet)
@@ -435,7 +434,7 @@ mod tests {
             .unwrap();
         assert!(config.certificates_to_request.is_some());
         let certs = config.certificates_to_request.unwrap();
-        assert!(certs.contains_key("certifier1"));
+        assert!(certs.types.contains_key("certifier1"));
     }
 
     #[test]

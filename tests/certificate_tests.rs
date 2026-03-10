@@ -203,8 +203,8 @@ async fn test_cert_request_flow() {
 
     // Configure certificates to request from the server
     let cert_type_b64 = "z40BOInXkI8m7f/wBrv4MJ09bZfzZbTj2fJqCtONqCY=";
-    let requested: HashMap<String, Vec<String>> =
-        HashMap::from([(cert_type_b64.to_string(), vec!["firstName".to_string()])]);
+    let mut requested = bsv::auth::types::RequestedCertificateSet::default();
+    requested.types.insert(cert_type_b64.to_string(), vec!["firstName".to_string()]);
     auth_fetch.set_requested_certificates(requested);
 
     // Make a request to trigger handshake + cert exchange

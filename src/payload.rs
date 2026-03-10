@@ -317,7 +317,10 @@ mod tests {
         let mut buf = Vec::new();
         write_varint_num(&mut buf, -1);
         // -1 as u64 = 0xFFFFFFFFFFFFFFFF, encoded as 0xFF prefix + 8 LE bytes
-        assert_eq!(buf, vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
+        assert_eq!(
+            buf,
+            vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
+        );
     }
 
     #[test]

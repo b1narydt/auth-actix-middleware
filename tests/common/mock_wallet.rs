@@ -171,10 +171,10 @@ impl WalletInterface for MockWallet {
     ) -> Result<ProveCertificateResult, WalletError> {
         let certs = self.certificates.lock().await;
         let matching = certs.iter().find(|mc| {
-            mc.certificate.cert_type == args.certificate.cert_type
-                && mc.certificate.subject == args.certificate.subject
-                && mc.certificate.serial_number == args.certificate.serial_number
-                && mc.certificate.certifier == args.certificate.certifier
+            Some(mc.certificate.cert_type.clone()) == args.certificate.cert_type
+                && Some(mc.certificate.subject.clone()) == args.certificate.subject
+                && Some(mc.certificate.serial_number.clone()) == args.certificate.serial_number
+                && Some(mc.certificate.certifier.clone()) == args.certificate.certifier
         });
 
         match matching {
@@ -186,7 +186,7 @@ impl WalletInterface for MockWallet {
                     .create_keyring_for_verifier(
                         &args.verifier,
                         &args.fields_to_reveal,
-                        &args.certificate.certifier,
+                        args.certificate.certifier.as_ref().unwrap(),
                         self,
                     )
                     .await
@@ -198,6 +198,8 @@ impl WalletInterface for MockWallet {
                     })?;
                 Ok(ProveCertificateResult {
                     keyring_for_verifier: keyring,
+                    certificate: None,
+                    verifier: None,
                 })
             }
             None => Err(WalletError::Internal(
