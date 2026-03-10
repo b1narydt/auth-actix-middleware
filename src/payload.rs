@@ -19,11 +19,17 @@ use actix_web::HttpRequest;
 
 /// Write a signed Bitcoin-style varint.
 ///
-/// Negative values write a single `0x00` byte (sentinel for "absent/none"),
-/// matching the TS SDK `writeVarIntNum(-1)` behavior.
+/// Negative values are encoded as their two's complement unsigned 64-bit
+/// representation, matching the TS SDK behavior where `writeVarIntNum(-1)`
+/// computes `-1 + 2^64 = 0xFFFFFFFFFFFFFFFF` and encodes it as a 9-byte
+/// varint (`0xFF` prefix + 8 bytes LE).
 pub(crate) fn write_varint_num(buf: &mut Vec<u8>, val: i64) {
     if val < 0 {
-        buf.push(0);
+        // Treat as unsigned: reinterpret the signed i64 as u64 (two's complement).
+        // For -1 this gives 0xFFFFFFFFFFFFFFFF, matching the TS SDK.
+        let uval = val as u64;
+        buf.push(0xff);
+        buf.extend_from_slice(&uval.to_le_bytes());
         return;
     }
     let val = val as u64;
@@ -307,10 +313,11 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn test_varint_negative_writes_zero() {
+    fn test_varint_negative_writes_twos_complement_u64() {
         let mut buf = Vec::new();
         write_varint_num(&mut buf, -1);
-        assert_eq!(buf, vec![0x00]);
+        // -1 as u64 = 0xFFFFFFFFFFFFFFFF, encoded as 0xFF prefix + 8 LE bytes
+        assert_eq!(buf, vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
     }
 
     #[test]
@@ -469,6 +476,11 @@ mod tests {
     // Fixture-based payload serialization tests
     // -----------------------------------------------------------------------
 
+    /// Helper: 9-byte varint(-1) sentinel matching TS SDK behavior.
+    fn varint_neg1() -> Vec<u8> {
+        vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
+    }
+
     #[test]
     fn test_serialize_request_payload_fixture() {
         // Fixture: GET /test, no query, no body, one x-bsv-topic header
@@ -486,13 +498,13 @@ mod tests {
         // [0x47, 0x45, 0x54]        -- "GET"
         // [0x05]                     -- varint(5) for "/test"
         // [0x2F, 0x74, 0x65, 0x73, 0x74] -- "/test"
-        // [0x00]                     -- varint(-1) for empty query
+        // [0xFF, 0xFF x8]            -- varint(-1) for empty query (9 bytes)
         // [0x01]                     -- varint(1) for 1 header
         // [0x0B]                     -- varint(11) for "x-bsv-topic"
         // b"x-bsv-topic"            -- 11 bytes
         // [0x05]                     -- varint(5) for "hello"
         // b"hello"                   -- 5 bytes
-        // [0x00]                     -- varint(-1) for no body
+        // [0xFF, 0xFF x8]            -- varint(-1) for no body (9 bytes)
 
         let mut expected = Vec::new();
         expected.extend_from_slice(&[0x01, 0x02, 0x03, 0x04]); // nonce
@@ -500,13 +512,13 @@ mod tests {
         expected.extend_from_slice(b"GET");
         expected.push(0x05); // varint(5)
         expected.extend_from_slice(b"/test");
-        expected.push(0x00); // varint(-1) for empty query
+        expected.extend_from_slice(&varint_neg1()); // varint(-1) for empty query
         expected.push(0x01); // varint(1) header count
         expected.push(0x0B); // varint(11) for "x-bsv-topic"
         expected.extend_from_slice(b"x-bsv-topic");
         expected.push(0x05); // varint(5) for "hello"
         expected.extend_from_slice(b"hello");
-        expected.push(0x00); // varint(-1) for no body
+        expected.extend_from_slice(&varint_neg1()); // varint(-1) for no body
 
         assert_eq!(
             result, expected,
@@ -592,7 +604,7 @@ mod tests {
         expected.push(0xFD); // varint(404) = 0xFD + 0x94, 0x01
         expected.extend_from_slice(&(404u16).to_le_bytes());
         expected.push(0x00); // 0 headers
-        expected.push(0x00); // varint(-1) for no body
+        expected.extend_from_slice(&varint_neg1()); // varint(-1) for no body
 
         assert_eq!(
             result, expected,

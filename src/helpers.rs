@@ -115,6 +115,19 @@ pub fn build_auth_message(
     let payload =
         crate::payload::serialize_from_http_request(&request_nonce_bytes, req, body_bytes);
 
+    tracing::debug!(
+        "build_auth_message: method={} path={} query={} body_len={} nonce_len={} request_id={} nonce={} your_nonce={} payload_len={}",
+        req.method(),
+        req.path(),
+        req.query_string(),
+        body_bytes.len(),
+        request_nonce_bytes.len(),
+        headers.request_id,
+        headers.nonce,
+        headers.your_nonce,
+        payload.len(),
+    );
+
     let signature_bytes = hex::decode(&headers.signature).unwrap_or_default();
 
     AuthMessage {
