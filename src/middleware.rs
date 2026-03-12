@@ -289,7 +289,7 @@ where
                     let service_resp = srv.call(service_req).await?;
 
                     // 8. Buffer response, sign, and return with auth headers
-                    handle_response_signing(service_resp, peer, transport, &headers).await
+                    handle_response_signing(service_resp, peer, &headers).await
                 }
                 None => {
                     // Branch 3: No auth headers
@@ -471,7 +471,6 @@ where
 async fn handle_response_signing<B, W>(
     service_resp: ServiceResponse<B>,
     peer: Arc<tokio::sync::Mutex<Peer<W>>>,
-    transport: Arc<ActixTransport>,
     request_headers: &crate::helpers::AuthHeaders,
 ) -> Result<ServiceResponse<EitherBody<B>>, Error>
 where
@@ -501,66 +500,35 @@ where
         &body_bytes,
     );
 
-    // 4. Look up session to get the peer_nonce for correlation.
-    //    The Peer's send_message sets your_nonce = session.peer_nonce on the
-    //    outgoing message. We must register_pending with that same value so
-    //    the transport can correlate the response.
-    let rx = {
+    // 4. Sign the response against the exact session that authenticated the
+    //    request. The incoming your_nonce is our session nonce, so this stays
+    //    request-safe even when the same identity has multiple active sessions.
+    let signed_msg = {
         let peer_guard = peer.lock().await;
-        let session = peer_guard
-            .session_manager()
-            .get_session_by_identifier(&request_headers.identity_key)
-            .ok_or_else(|| {
-                error!(
-                    "No session found for identity_key={} during response signing",
-                    request_headers.identity_key
-                );
-                AuthMiddlewareError::Transport(format!(
-                    "no session for identity_key: {}",
-                    request_headers.identity_key
-                ))
-            })?;
-        let peer_nonce = session.peer_nonce.clone();
-        drop(peer_guard);
-        transport.register_pending(peer_nonce).await
-    };
-
-    // 5. Sign response via Peer (lock briefly, drop before awaiting channel)
-    {
-        let mut peer_guard = peer.lock().await;
         peer_guard
-            .send_message(&request_headers.identity_key, response_payload)
+            .create_general_message(&request_headers.your_nonce, response_payload)
             .await
             .map_err(|e| {
-                error!("Peer response signing failed: {}", e);
+                error!(
+                    "Peer response signing failed for identity_key={} session_nonce={}: {}",
+                    request_headers.identity_key, request_headers.your_nonce, e
+                );
                 AuthMiddlewareError::BsvSdk(e)
-            })?;
-    }
-
-    // 6. Wait for signed response with timeout
-    let signed_msg = tokio::time::timeout(Duration::from_secs(30), rx)
-        .await
-        .map_err(|_| {
-            error!("Response signing timed out after 30s");
-            actix_web::error::ErrorRequestTimeout("response signing timeout")
-        })?
-        .map_err(|_| {
-            error!("Response signing channel dropped");
-            actix_web::error::ErrorInternalServerError("response signing channel dropped")
-        })?;
+            })?
+    };
 
     debug!(
         "Response signed for identity_key={}",
         signed_msg.identity_key
     );
 
-    // 7. Build final response preserving original status and headers
+    // 5. Build final response preserving original status and headers
     let mut final_response = HttpResponse::build(status);
     for (key, value) in response_headers.iter() {
         final_response.insert_header((key.clone(), value.clone()));
     }
 
-    // 8. Append auth headers from the signed message
+    // 6. Append auth headers from the signed message
     final_response.insert_header(("x-bsv-auth-version", signed_msg.version.as_str()));
     final_response.insert_header(("x-bsv-auth-identity-key", signed_msg.identity_key.as_str()));
 
@@ -585,4 +553,244 @@ where
         request,
         final_response.body(body_bytes).map_into_right_body(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex as StdMutex;
+
+    use actix_web::body::to_bytes;
+    use actix_web::test::TestRequest;
+    use async_trait::async_trait;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use base64::Engine;
+    use bsv::auth::error::AuthError;
+    use bsv::auth::transports::Transport;
+    use bsv::primitives::private_key::PrivateKey;
+    use bsv::wallet::interfaces::GetPublicKeyArgs;
+    use bsv::wallet::ProtoWallet;
+    use tokio::sync::mpsc;
+
+    struct MockTransport {
+        peer_tx: mpsc::Sender<AuthMessage>,
+        incoming_rx: StdMutex<Option<mpsc::Receiver<AuthMessage>>>,
+    }
+
+    fn create_mock_transport_pair() -> (Arc<MockTransport>, Arc<MockTransport>) {
+        let (tx_a, rx_a) = mpsc::channel(32);
+        let (tx_b, rx_b) = mpsc::channel(32);
+
+        let transport_a = Arc::new(MockTransport {
+            peer_tx: tx_b,
+            incoming_rx: StdMutex::new(Some(rx_a)),
+        });
+        let transport_b = Arc::new(MockTransport {
+            peer_tx: tx_a,
+            incoming_rx: StdMutex::new(Some(rx_b)),
+        });
+
+        (transport_a, transport_b)
+    }
+
+    #[async_trait]
+    impl Transport for MockTransport {
+        async fn send(&self, message: AuthMessage) -> Result<(), AuthError> {
+            self.peer_tx
+                .send(message)
+                .await
+                .map_err(|e| AuthError::TransportError(format!("mock send failed: {}", e)))
+        }
+
+        fn subscribe(&self) -> mpsc::Receiver<AuthMessage> {
+            self.incoming_rx
+                .lock()
+                .unwrap()
+                .take()
+                .expect("subscribe() already called on MockTransport")
+        }
+    }
+
+    async fn identity_key(wallet: &ProtoWallet) -> String {
+        wallet
+            .get_public_key(
+                GetPublicKeyArgs {
+                    identity_key: true,
+                    protocol_id: None,
+                    key_id: None,
+                    counterparty: None,
+                    privileged: false,
+                    privileged_reason: None,
+                    for_self: None,
+                    seek_permission: None,
+                },
+                None,
+            )
+            .await
+            .unwrap()
+            .public_key
+            .to_der_hex()
+    }
+
+    async fn wait_for_pending<W: WalletInterface>(peer: &mut Peer<W>) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            if peer.process_pending().await.unwrap() > 0 {
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "timed out waiting for pending peer messages"
+            );
+            tokio::task::yield_now().await;
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn response_signing_handles_concurrent_requests_for_same_session() {
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let client_wallet = ProtoWallet::new(PrivateKey::from_random().unwrap());
+                let server_wallet = ProtoWallet::new(PrivateKey::from_random().unwrap());
+
+                let client_identity = identity_key(&client_wallet).await;
+                let server_identity = identity_key(&server_wallet).await;
+
+                let (client_transport, server_transport) = create_mock_transport_pair();
+                let mut client_peer = Peer::new(client_wallet, client_transport);
+                let mut server_peer = Peer::new(server_wallet, server_transport);
+
+                let server_identity_clone = server_identity.clone();
+                let send_handle = tokio::task::spawn_local(async move {
+                    client_peer
+                        .send_message(&server_identity_clone, b"warmup".to_vec())
+                        .await
+                        .unwrap();
+                    client_peer
+                });
+
+                wait_for_pending(&mut server_peer).await;
+                let _client_peer = send_handle.await.unwrap();
+                wait_for_pending(&mut server_peer).await;
+
+                let server_session = server_peer
+                    .session_manager()
+                    .get_session_by_identifier(&client_identity)
+                    .unwrap()
+                    .clone();
+                let session_nonce = server_session.session_nonce.clone();
+                let client_session_nonce = server_session.peer_nonce.clone();
+
+                let peer = Arc::new(tokio::sync::Mutex::new(server_peer));
+
+                let headers_a = crate::helpers::AuthHeaders {
+                    version: "0.1".to_string(),
+                    identity_key: client_identity.clone(),
+                    nonce: "request-a".to_string(),
+                    your_nonce: session_nonce.clone(),
+                    signature: "00".to_string(),
+                    request_id: BASE64.encode([1u8; 32]),
+                };
+                let headers_b = crate::helpers::AuthHeaders {
+                    version: "0.1".to_string(),
+                    identity_key: client_identity.clone(),
+                    nonce: "request-b".to_string(),
+                    your_nonce: session_nonce.clone(),
+                    signature: "00".to_string(),
+                    request_id: BASE64.encode([2u8; 32]),
+                };
+
+                let response_a = ServiceResponse::new(
+                    TestRequest::default().to_http_request(),
+                    HttpResponse::Ok().body("first"),
+                );
+                let response_b = ServiceResponse::new(
+                    TestRequest::default().to_http_request(),
+                    HttpResponse::Ok().body("second"),
+                );
+
+                let (result_a, result_b) = tokio::time::timeout(Duration::from_secs(2), async {
+                    tokio::join!(
+                        handle_response_signing(response_a, peer.clone(), &headers_a),
+                        handle_response_signing(response_b, peer.clone(), &headers_b),
+                    )
+                })
+                .await
+                .expect("response signing should not hang");
+
+                let response_a = result_a.unwrap();
+                let response_b = result_b.unwrap();
+
+                let headers_a = response_a.response().headers();
+                let headers_b = response_b.response().headers();
+
+                assert_eq!(
+                    headers_a
+                        .get("x-bsv-auth-your-nonce")
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    client_session_nonce
+                );
+                assert_eq!(
+                    headers_b
+                        .get("x-bsv-auth-your-nonce")
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    client_session_nonce
+                );
+
+                let signed_nonce_a = headers_a
+                    .get("x-bsv-auth-nonce")
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string();
+                let signed_nonce_b = headers_b
+                    .get("x-bsv-auth-nonce")
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string();
+                assert_ne!(signed_nonce_a, signed_nonce_b);
+
+                assert_ne!(
+                    headers_a
+                        .get("x-bsv-auth-signature")
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    headers_b
+                        .get("x-bsv-auth-signature")
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                );
+
+                assert_eq!(
+                    headers_a
+                        .get("x-bsv-auth-request-id")
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    BASE64.encode([1u8; 32])
+                );
+                assert_eq!(
+                    headers_b
+                        .get("x-bsv-auth-request-id")
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    BASE64.encode([2u8; 32])
+                );
+
+                let body_a = to_bytes(response_a.into_body()).await.unwrap();
+                let body_b = to_bytes(response_b.into_body()).await.unwrap();
+                assert_eq!(body_a.as_ref(), b"first");
+                assert_eq!(body_b.as_ref(), b"second");
+            })
+            .await;
+    }
 }
