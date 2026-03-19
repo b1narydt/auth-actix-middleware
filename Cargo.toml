@@ -1,6 +1,6 @@
 [package]
 name = "bsv-auth-actix-middleware"
-version = "0.1.2"
+version = "0.1.21"
 edition = "2021"
 rust-version = "1.88"
 description = "BSV BRC-31 authentication middleware for Actix-web"
@@ -19,7 +19,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 name = "bsv_auth_actix_middleware"
 
 [dependencies]
-bsv-sdk = { version = "0.1.74", features = ["network"] }
+bsv-sdk = { version = "0.1.75", features = ["network"] }
 actix-web = "4"
 actix-http = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
