@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-03-19
+
+### Fixed
+
+- **Eliminated Peer Mutex deadlock under concurrent requests** -- Auth
+  verification now calls `peer.dispatch_message()` directly for each request
+  instead of feeding messages through a shared channel and draining with
+  `process_pending()`. This prevents one request from consuming another's
+  verification message and eliminates serialization of all concurrent requests.
+
+- **Increased transport channel buffer** -- from 32 to 1024 to prevent
+  `feed_incoming().await` from blocking when many handshake messages queue up.
+
+### Changed
+
+- Bumped `bsv-sdk` dependency to `0.1.74` (Peer deadlock fix).
+
 ## [0.1.1] - 2026-03-10
 
 ### Fixed

@@ -40,9 +40,9 @@ impl Default for ActixTransport {
 }
 
 impl ActixTransport {
-    /// Create a new transport with an internal mpsc channel (buffer size 32).
+    /// Create a new transport with an internal mpsc channel.
     pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(1024);
         Self {
             pending: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             incoming_tx: tx,

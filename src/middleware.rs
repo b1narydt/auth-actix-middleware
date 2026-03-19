@@ -216,20 +216,20 @@ where
                     // 3. Build AuthMessage from request + body + headers
                     let auth_msg = build_auth_message(&http_req, &body_bytes, &headers);
 
-                    // 4. Feed to Peer for signature verification.
-                    //    For general messages, process_pending verifies inline
-                    //    and returns Err(AuthError) on invalid signature.
-                    transport.feed_incoming(auth_msg).await.map_err(|e| {
-                        error!("Failed to feed auth message to Peer: {}", e);
-                        e
-                    })?;
-
+                    // 4. Verify the request signature.
+                    //    Lock the Peer briefly and dispatch this single message
+                    //    directly, rather than feeding through the channel and
+                    //    calling process_pending (which drains ALL queued messages
+                    //    and serializes concurrent requests).
                     {
+                        tracing::debug!("request_verify: waiting for peer lock");
                         let mut peer_guard = peer.lock().await;
-                        peer_guard.process_pending().await.map_err(|e| {
+                        tracing::debug!("request_verify: acquired peer lock, dispatching message");
+                        peer_guard.dispatch_message(auth_msg).await.map_err(|e| {
                             warn!("Signature verification failed: {}", e);
                             AuthMiddlewareError::BsvSdk(e)
                         })?;
+                        tracing::debug!("request_verify: dispatch complete, releasing lock");
                     }
 
                     // 5. Verification passed -- insert identity into extensions
@@ -503,9 +503,11 @@ where
     // 4. Sign the response against the exact session that authenticated the
     //    request. The incoming your_nonce is our session nonce, so this stays
     //    request-safe even when the same identity has multiple active sessions.
+    tracing::debug!("response_signing: waiting for peer lock");
     let signed_msg = {
         let peer_guard = peer.lock().await;
-        peer_guard
+        tracing::debug!("response_signing: acquired peer lock, calling create_general_message");
+        let result = peer_guard
             .create_general_message(&request_headers.your_nonce, response_payload)
             .await
             .map_err(|e| {
@@ -514,7 +516,9 @@ where
                     request_headers.identity_key, request_headers.your_nonce, e
                 );
                 AuthMiddlewareError::BsvSdk(e)
-            })?
+            })?;
+        tracing::debug!("response_signing: create_general_message completed");
+        result
     };
 
     debug!(
