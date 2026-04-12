@@ -218,7 +218,9 @@ pub async fn create_cert_test_server() -> CertTestContext {
     // Configure certificatesToRequest (HashMap<String, Vec<String>>)
     // Keys are base64-encoded certificate type, values are field names to request
     let mut certs_to_request = bsv::auth::types::RequestedCertificateSet::default();
-    certs_to_request.types.insert(cert_type_b64.to_string(), vec!["firstName".to_string()]);
+    certs_to_request
+        .types
+        .insert(cert_type_b64.to_string(), vec!["firstName".to_string()]);
 
     // Shared storage for received certificates
     let certs_received = Arc::new(tokio::sync::Mutex::new(Vec::<Certificate>::new()));

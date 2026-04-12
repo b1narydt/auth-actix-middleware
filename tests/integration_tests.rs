@@ -905,3 +905,33 @@ async fn test_concurrent_authenticated_requests() {
         "all concurrent requests should return 200"
     );
 }
+
+/// GAP G1 regression: an unauthenticated request to a protected server must
+/// return 401 with body
+/// `{"status":"error","code":"UNAUTHORIZED","message":"Mutual-authentication failed!"}`
+/// -- byte-identical to TS auth-express-middleware:692-696. The previous
+/// implementation emitted code `ERR_UNAUTHORIZED` and field `description`,
+/// which is what this test locks against.
+#[actix_rt::test]
+async fn test_unauthenticated_request_returns_ts_parity_401() {
+    let base_url = get_server_url().await;
+
+    // Bare GET with no auth headers against a route the test server guards.
+    let url = format!("{}/", base_url);
+    let resp = reqwest::get(&url)
+        .await
+        .expect("GET / should produce a response");
+
+    assert_eq!(resp.status().as_u16(), 401, "expected 401 Unauthorized");
+
+    let body: serde_json::Value = resp.json().await.expect("response body must be JSON");
+
+    assert_eq!(body["status"], "error");
+    assert_eq!(body["code"], "UNAUTHORIZED");
+    assert_eq!(body["message"], "Mutual-authentication failed!");
+    // Guard against regression to the old `description` field.
+    assert!(
+        body.get("description").is_none(),
+        "401 body must not carry `description` (TS spec uses `message`)"
+    );
+}

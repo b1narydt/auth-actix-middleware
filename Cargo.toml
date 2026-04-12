@@ -1,6 +1,6 @@
 [package]
 name = "bsv-auth-actix-middleware"
-version = "0.1.21"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.88"
 description = "BSV BRC-31 authentication middleware for Actix-web"
@@ -19,24 +19,24 @@ rustdoc-args = ["--cfg", "docsrs"]
 name = "bsv_auth_actix_middleware"
 
 [dependencies]
-bsv-sdk = { version = "0.1.75", features = ["network"] }
-actix-web = "4"
-actix-http = "3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
-futures-util = "0.3"
-thiserror = "2"
-tracing = "0.1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-async-trait = "0.1"
+bsv-sdk = { version = "0.2", features = ["network"] }
+actix-web = "4.13"
+actix-http = "3.12"
+tokio = { version = "1.51", features = ["rt-multi-thread", "macros", "sync"] }
+futures-util = "0.3.32"
+thiserror = "2.0"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+async-trait = "0.1.89"
 base64 = "0.22"
-hex = "0.4"
-dashmap = "6"
+hex = "0.4.3"
+dashmap = "6.1"
 
 [dev-dependencies]
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-actix-rt = "2"
-actix-test = "0.1"
-serde_json = "1"
-reqwest = { version = "0.12", features = ["json"] }
+actix-rt = "2.11"
+actix-test = "0.1.5"
+serde_json = "1.0.149"
+reqwest = { version = "0.13", features = ["json"] }
 base64 = "0.22"

@@ -147,7 +147,7 @@ impl WalletInterface for MockWallet {
             })
             .map(|mc| CertificateResult {
                 certificate: mc.certificate.clone(),
-                keyring: mc.master_keyring.clone(),
+                keyring: Some(mc.master_keyring.clone()),
                 verifier: None,
             })
             .collect();

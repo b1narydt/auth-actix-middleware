@@ -266,15 +266,15 @@ where
                                         identity_key = %headers.identity_key,
                                         "certificate request timed out"
                                     );
+                                    // Route through AuthMiddlewareError to keep the
+                                    // 408 body in one place (TS parity: code
+                                    // CERTIFICATE_TIMEOUT, field `message`).
+                                    use actix_web::error::ResponseError;
+                                    let err_resp = AuthMiddlewareError::CertificateTimeout
+                                        .error_response();
                                     return Ok(ServiceResponse::new(
                                         http_req,
-                                        HttpResponse::RequestTimeout()
-                                            .json(serde_json::json!({
-                                                "status": "error",
-                                                "code": "CERTIFICATE_TIMEOUT",
-                                                "message": "Certificate request timed out"
-                                            }))
-                                            .map_into_right_body(),
+                                        err_resp.map_into_right_body(),
                                     ));
                                 }
                             }
@@ -302,16 +302,14 @@ where
                         Ok(res.map_into_left_body())
                     } else {
                         debug!("No auth headers, allow_unauthenticated=false, rejecting with 401");
+                        // TS parity (auth-express-middleware:692-696):
+                        // {"status":"error","code":"UNAUTHORIZED","message":"Mutual-authentication failed!"}
+                        use actix_web::error::ResponseError;
                         let (http_req, _payload) = req.into_parts();
+                        let err_resp = AuthMiddlewareError::Unauthorized.error_response();
                         Ok(ServiceResponse::new(
                             http_req,
-                            HttpResponse::Unauthorized()
-                                .json(serde_json::json!({
-                                    "status": "error",
-                                    "code": "ERR_UNAUTHORIZED",
-                                    "description": "Mutual authentication required"
-                                }))
-                                .map_into_right_body(),
+                            err_resp.map_into_right_body(),
                         ))
                     }
                 }
@@ -367,6 +365,31 @@ where
                 "Processing certificate message: type={:?}",
                 auth_msg.message_type
             );
+
+            // GAP G4: if a certificate-response carries no certificates, TS
+            // auth-express-middleware:437-442 short-circuits with 400 and the
+            // minimal body `{"status":"No certificates provided"}` (not the
+            // standard error shape). Mirror that exactly.
+            if matches!(
+                auth_msg.message_type,
+                bsv::auth::types::MessageType::CertificateResponse
+            ) && auth_msg
+                .certificates
+                .as_ref()
+                .map(|c| c.is_empty())
+                .unwrap_or(true)
+            {
+                warn!(
+                    identity_key = %auth_msg.identity_key,
+                    "certificate-response received with empty certs -- rejecting with 400"
+                );
+                return Ok(ServiceResponse::new(
+                    http_req,
+                    HttpResponse::BadRequest()
+                        .json(serde_json::json!({"status": "No certificates provided"}))
+                        .map_into_right_body(),
+                ));
+            }
 
             transport.feed_incoming(auth_msg).await.map_err(|e| {
                 error!("Failed to feed certificate message to Peer: {}", e);
@@ -507,6 +530,10 @@ where
     let signed_msg = {
         let peer_guard = peer.lock().await;
         tracing::debug!("response_signing: acquired peer lock, calling create_general_message");
+        // GAP G3: surface response-signing failures as a dedicated error code
+        // (ERR_RESPONSE_SIGNING_FAILED) per TS auth-express-middleware:543-547.
+        // Routing this through BsvSdk would emit ERR_INTERNAL_SERVER_ERROR which
+        // hides the failure mode from clients.
         let result = peer_guard
             .create_general_message(&request_headers.your_nonce, response_payload)
             .await
@@ -515,7 +542,7 @@ where
                     "Peer response signing failed for identity_key={} session_nonce={}: {}",
                     request_headers.identity_key, request_headers.your_nonce, e
                 );
-                AuthMiddlewareError::BsvSdk(e)
+                AuthMiddlewareError::ResponseSigningFailed(e.to_string())
             })?;
         tracing::debug!("response_signing: create_general_message completed");
         result

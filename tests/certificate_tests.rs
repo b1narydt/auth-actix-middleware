@@ -5,13 +5,11 @@
 //! holding issued MasterCertificates.
 //!
 //! Mirrors TS testCertificaterequests.test.ts (Tests 12 and 16).
-//!
-//! Run with: cargo test --test certificate_tests -- --test-threads=1 --nocapture
 
 mod common;
 
 use common::mock_wallet::MockWallet;
-use common::test_server::{create_cert_test_server, CertTestContext};
+use common::test_server::create_cert_test_server;
 
 use bsv::auth::certificates::master::MasterCertificate;
 use bsv::auth::clients::AuthFetch;
@@ -20,7 +18,6 @@ use bsv::wallet::interfaces::{CertificateType, GetPublicKeyArgs, WalletInterface
 
 use std::collections::HashMap;
 use std::sync::Once;
-use tokio::sync::OnceCell;
 
 static INIT_TRACING: Once = Once::new();
 
@@ -34,16 +31,6 @@ fn init_tracing() {
             .with_test_writer()
             .init();
     });
-}
-
-/// Shared cert test server context.
-static CERT_SERVER: OnceCell<CertTestContext> = OnceCell::const_new();
-
-async fn get_cert_server() -> &'static CertTestContext {
-    init_tracing();
-    CERT_SERVER
-        .get_or_init(|| async { create_cert_test_server().await })
-        .await
 }
 
 /// Decode a base64 string to [u8; 32].
@@ -71,7 +58,8 @@ fn base64_decode_32(s: &str) -> [u8; 32] {
 /// 7. Handler returns 200 because certs were received
 #[actix_rt::test]
 async fn test_cert_protected_endpoint() {
-    let ctx = get_cert_server().await;
+    init_tracing();
+    let ctx = create_cert_test_server().await;
     let base_url = &ctx.server_base_url;
 
     // Create certifier wallet from fixed key (same as TS test)
@@ -178,6 +166,97 @@ async fn test_cert_protected_endpoint() {
     );
 }
 
+/// GAP G4 regression: a `certificateResponse` message arriving at
+/// `/.well-known/auth` with an empty `certificates` array must yield a 400
+/// with the minimal body `{"status":"No certificates provided"}`, per TS
+/// auth-express-middleware:437-442.
+///
+/// Crucially, this is *not* the standard `{status,code,message}` error shape
+/// -- it is a single-field body. Asserting byte-for-byte parity here guards
+/// against any well-meaning refactor that "helpfully" wraps it back into the
+/// standard envelope.
+#[actix_rt::test]
+async fn test_empty_cert_response_returns_400() {
+    init_tracing();
+    let ctx = create_cert_test_server().await;
+    let base_url = &ctx.server_base_url;
+
+    // Hand-craft a certificateResponse AuthMessage with empty certs. We use
+    // the wire JSON directly (camelCase per the SDK's serde config) rather
+    // than reaching into the SDK, because this test is specifically about
+    // how the middleware reacts to a malformed/empty cert payload from an
+    // untrusted peer -- including peers not speaking the Rust SDK.
+    let msg = serde_json::json!({
+        "version": "0.1",
+        "messageType": "certificateResponse",
+        "identityKey": "02".to_string() + &"0".repeat(64),
+        "nonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "yourNonce": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA=",
+        "certificates": []
+    });
+
+    let url = format!("{}/.well-known/auth", base_url);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("content-type", "application/json")
+        .json(&msg)
+        .send()
+        .await
+        .expect("POST /.well-known/auth should return a response");
+
+    assert_eq!(
+        resp.status().as_u16(),
+        400,
+        "empty certificateResponse must return 400"
+    );
+
+    let body: serde_json::Value = resp.json().await.expect("response body should be JSON");
+
+    // Exact shape match: one field, one value, no extras.
+    assert_eq!(
+        body,
+        serde_json::json!({"status": "No certificates provided"})
+    );
+}
+
+/// GAP G4 regression: when the `certificates` field is entirely absent
+/// (not just an empty array), the middleware treats that the same way --
+/// TS's `!Array.isArray(certs) || certs.length === 0` catches both cases.
+#[actix_rt::test]
+async fn test_cert_response_with_missing_certs_field_returns_400() {
+    init_tracing();
+    let ctx = create_cert_test_server().await;
+    let base_url = &ctx.server_base_url;
+
+    let msg = serde_json::json!({
+        "version": "0.1",
+        "messageType": "certificateResponse",
+        "identityKey": "02".to_string() + &"0".repeat(64),
+        "nonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "yourNonce": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA="
+        // certificates field deliberately omitted
+    });
+
+    let url = format!("{}/.well-known/auth", base_url);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("content-type", "application/json")
+        .json(&msg)
+        .send()
+        .await
+        .expect("POST /.well-known/auth should return a response");
+
+    assert_eq!(resp.status().as_u16(), 400);
+
+    let body: serde_json::Value = resp.json().await.expect("response body should be JSON");
+    assert_eq!(
+        body,
+        serde_json::json!({"status": "No certificates provided"})
+    );
+}
+
 /// Test 12 (TS cert test): Certificate request flow -- client requests certs
 /// from server during handshake.
 ///
@@ -191,7 +270,8 @@ async fn test_cert_protected_endpoint() {
 /// and the server's certificates are exchanged.
 #[actix_rt::test]
 async fn test_cert_request_flow() {
-    let ctx = get_cert_server().await;
+    init_tracing();
+    let ctx = create_cert_test_server().await;
     let base_url = &ctx.server_base_url;
 
     // Create client wallet with random key
@@ -204,7 +284,9 @@ async fn test_cert_request_flow() {
     // Configure certificates to request from the server
     let cert_type_b64 = "z40BOInXkI8m7f/wBrv4MJ09bZfzZbTj2fJqCtONqCY=";
     let mut requested = bsv::auth::types::RequestedCertificateSet::default();
-    requested.types.insert(cert_type_b64.to_string(), vec!["firstName".to_string()]);
+    requested
+        .types
+        .insert(cert_type_b64.to_string(), vec!["firstName".to_string()]);
     auth_fetch.set_requested_certificates(requested);
 
     // Make a request to trigger handshake + cert exchange

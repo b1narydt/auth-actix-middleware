@@ -21,24 +21,13 @@ return, providing end-to-end authentication for every HTTP exchange.
 
 ## Installation
 
-Add the crate to your project:
+Add the crate (and the BSV SDK, which it depends on for wallet and peer types)
+to your project with `cargo add`. This always pulls the current published
+version -- see the [crates.io badge](https://crates.io/crates/bsv-auth-actix-middleware)
+at the top of this README for the exact number:
 
 ```sh
-cargo add bsv-auth-actix-middleware
-```
-
-Or add it manually to your `Cargo.toml`:
-
-```toml
-[dependencies]
-bsv-auth-actix-middleware = "0.1"
-```
-
-You will also need the BSV SDK for wallet and peer types:
-
-```toml
-[dependencies]
-bsv-sdk = { version = "0.1.3", features = ["network"] }
+cargo add bsv-auth-actix-middleware bsv-sdk --features bsv-sdk/network
 ```
 
 ## Quick Start
